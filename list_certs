@@ -43,9 +43,10 @@ def list_domains():
     domains = {}
     dir = os.listdir(CERT_BASE_PATH)
     for domain in dir:
-        data = list_certs(domain)
-        if data:
-            domains[domain] = data
+        if domain not in ["Archive"]:
+            data = list_certs(domain)
+            if data:
+                domains[domain] = data
     return domains
 
 def list_certs(domain):
