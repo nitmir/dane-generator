@@ -66,12 +66,12 @@ def generate_domain(servers, domain):
             data = json.loads(f.read())
             TLSAs.extend(_generate_domain(data, domain))
     TLSAs.sort()
-    return TLSAs
+    return "\n".join(TLSAs)
 
 
 if __name__ == '__main__':
     data = []
     servers = ["10.7.0.1", "10.7.0.2", "10.7.0.4"]
     for domain in sys.argv[1:]:
-        data.extend(generate_domain(servers, domain))
+        data.append(generate_domain(servers, domain))
     print "\n".join(data)
