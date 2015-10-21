@@ -143,6 +143,7 @@ def find_domain(fqdn):
         domain = ".".join(fqdn[i:])
         if domain in config.DOMAINS:
             return domain
+    raise ValueError("domain not found for %s" % fqdn)
 
 def list_sshkey():
     certs = collections.defaultdict(lambda:collections.defaultdict(list))

@@ -13,7 +13,7 @@ import config
 
 sshfp_algo = {
     "rsa" : 1,
-    "dsa" : 2,
+    "dss" : 2,
     "ecdsa": 3,
     "ed25519": 4
 }
