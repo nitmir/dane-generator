@@ -7,8 +7,28 @@ import hashlib
 import urllib2
 import json
 import contextlib
+import base64
 
 import config
+
+sshfp_algo = {
+    "rsa" : 1,
+    "dsa" : 2,
+    "ecdsa": 3,
+    "ed25519": 4
+}
+
+def genSSHFP(hostname, cert):
+    cert = cert.split()
+    kind = cert[0]
+    cert = cert[1]
+
+    if kind.startswith("ssh-"):
+        kind = kind[4:]
+    elif kind.startswith("ecdsa-"):
+        kind = "ecdsa"
+    if kind in sshfp_algo:
+        return '%s\tIN\tSSHFP %s %s %s' % (hostname, sshfp_algo[kind], 2, hashlib.sha256(base64.b64decode(cert)).hexdigest())
 
 # reftype: 0 = plain cert, 1 = sha256, 2 = sha512
 # certytype: 0 = CA pinning, 1 = cert pinning, 2 = self trusted CA, 3 = self trusted cert
@@ -30,9 +50,9 @@ def genTLSA(hostname, pemcert, port, proto, certtype=1, selector=0, reftype=1, c
     if compat:
         # octet length is half of the string length; remember certtype and reftype are part of the length so +2
 #        return "_443._tcp.%s IN TYPE65468 \# %s 0%s0%s%s"%(hostname, len(certhex)/2+2, certtype, reftype, certhex )
-        return "_%s._%s.%s IN TYPE52 \# %s 0%s0%s0%s%s"%(port, proto, hostname, len(certhex)/2 +3, certtype, selector, reftype, certhex)
+        return "_%s._%s.%s\tIN\tTYPE52 \# %s 0%s0%s0%s%s"%(port, proto, hostname, len(certhex)/2 +3, certtype, selector, reftype, certhex)
     else:
-        return "_%s._%s.%s IN TLSA %s %s %s %s"%(port, proto, hostname, certtype, selector, reftype, certhex)
+        return "_%s._%s.%s\tIN\tTLSA %s %s %s %s"%(port, proto, hostname, certtype, selector, reftype, certhex)
 
 # take PEM encoded EE-cert and DER encode it, then sha256 it
 def hashCert(reftype,certblob):
@@ -51,25 +71,31 @@ def hashCert(reftype,certblob):
 
 
 def _generate_domain(data, domain):
-    TLSAs = []
+    RRs = []
     services_definition = data[0]
     certificates = data[1].get(domain, {})
     for fqdn, params in certificates.items():
         for service in params["services"]:
             for port in services_definition[service]["ports"]:
                 for cert in params["certs"]:
-                    TLSAs.append(genTLSA('%s.' % fqdn, cert, port, services_definition[service]["transport"], certtype=3, selector=0, reftype=2, compat=True))
-    return TLSAs
+                    RRs.append(genTLSA('%s.' % fqdn, cert, port, services_definition[service]["transport"], certtype=3, selector=0, reftype=2, compat=True))
+    ssh_certificates = data[2].get(domain, {})
+    for fqdn, certs in ssh_certificates.items():
+        for cert in certs:
+            sshfp_rr = genSSHFP('%s.' % fqdn, cert)
+            if sshfp_rr:
+                RRs.append(sshfp_rr)
+    return RRs
 
 
 def generate_domain(domain):
-    TLSAs = []
+    RRs = []
     for server in config.SERVERS:
         with contextlib.closing(urllib2.urlopen("http://%s:%s" % (server, config.PORT))) as f:
             data = json.loads(f.read())
-            TLSAs.extend(_generate_domain(data, domain))
-    TLSAs.sort()
-    return "\n".join(TLSAs) + "\n"
+            RRs.extend(_generate_domain(data, domain))
+    RRs.sort()
+    return "\n".join(RRs) + "\n"
 
 
 if __name__ == '__main__':

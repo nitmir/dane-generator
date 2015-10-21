@@ -6,15 +6,18 @@ import time
 import netaddr
 import ConfigParser
 import collections
+import itertools
+import subprocess
 
 import config
 
 services = set()
 
 def render(data):
-    print "HTTP/1.1 200 OK"
+    print "HTTP/1.0 200 OK"
     print "Content-Type: text/plain; charset=utf-8"
     print "Content-Length: %d" % len(data)
+    print "Connection: close"
     print ""
     print data
     print ""
@@ -104,8 +107,67 @@ def list_certs(domain):
         certs[key] = {'services': list(value['services']), 'certs': list(value['certs'])}
     return certs
 
+def read_request():
+    try:
+        method, param, version = sys.stdin.readline().split()
+    except ValueError:
+        raise ValueError("forbidden")
+    return method, param, version
+
+def read_header():
+    headers = {}
+    for line in itertools.takewhile(lambda x:bool(x.strip()), iter(sys.stdin.readline, "\r\n")):
+        line = line.strip()
+        try:
+            key, value = line.split(':', 1)
+        except ValueError:
+            raise ValueError("bad header")
+        headers[key.strip()] = value.strip()
+    return headers
+
+def render_error(error):
+    msg = "%s" % error
+    print "HTTP/1.0 500 ERROR"
+    print "Content-Type: text/plain; charset=utf-8"
+    print "Content-Length: %d" % len(msg)
+    print "Connection: close"
+    print ""
+    print msg
+    print ""
+    sys.stdout.flush()
+
+
+def find_domain(fqdn):
+    fqdn = fqdn.split('.')
+    for i in range(len(fqdn)):
+        domain = ".".join(fqdn[i:])
+        if domain in config.DOMAINS:
+            return domain
+
+def list_sshkey():
+    certs = collections.defaultdict(lambda:collections.defaultdict(list))
+    if os.path.isdir(config.SSH_KEYS):
+        dir = os.listdir(config.SSH_KEYS)
+        for elt in dir:
+            if elt.endswith(".pub"):
+                with open(os.path.join(config.SSH_KEYS, elt)) as f:
+                    hostname = gethostname()
+                    domain = find_domain(hostname)
+                    certs[domain][hostname].append(f.read().strip())
+    return certs
+
+def gethostname():
+    p = subprocess.Popen(["/bin/hostname", "-f"], stdout=subprocess.PIPE)
+    return p.communicate()[0].strip()
+
 if __name__ == '__main__':
-    domains = list_domains()
-    data = (services_definition(), domains)
-    render(json.dumps(data, indent=4))
-    time.sleep(0.1)
+    try:
+        method, param, version = read_request()
+        headers = read_header()
+
+        domains = list_domains()
+        services = services_definition()
+        data = (services, domains, list_sshkey())
+        render(json.dumps(data, indent=4))
+    except Exception as error:
+        render_error(error)
