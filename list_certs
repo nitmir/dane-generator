@@ -57,10 +57,12 @@ def list_certs(domain):
     dir = os.listdir(base_path)
     dir.sort()
     for elt in dir:
-        if not elt in ["wildcard"]:
-            fqdn = "%s.%s" % (elt, domain)
-        else:
+        if elt in ["wildcard"]:
             continue
+        elif elt == "Main":
+            fqdn = domain
+        else:
+            fqdn = "%s.%s" % (elt, domain)
         elt_path = os.path.join(base_path, elt)
         cert_path = os.path.join(elt_path, 'ssl.crt')
         cert_path_new = os.path.join(elt_path, 'ssl.crt.new')
