@@ -1,2 +1,20 @@
 config pour inetd:
-10.7.0.1:6204    stream  tcp     nowait  root    /home/www-data/dane/list_certs
+    ip:6204    stream  tcp     nowait  root    /home/www-data/dane/list_certs
+
+cherche des certificats dans :
+    /etc/ssl/private/[dns_zone]/[dns_name]/ssl.crt
+
+services utilisant le certificat dans :
+    /etc/ssl/private/[dns_zone]/[dns_name]/services
+
+alias de domaine (en plus de [dns_name].[dns_zone]) dans :
+    /etc/ssl/private/[dns_zone]/[dns_name]/alias
+
+Définition des services dans :
+    /etc/ssl/private/service.ini
+
+    Le format est le suivant:
+        [service_name]
+        transport=(tcp|udp)
+        ports=port1 port2 port3
+

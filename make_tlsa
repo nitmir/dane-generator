@@ -48,23 +48,30 @@ def hashCert(reftype,certblob):
 
 
 def _generate_domain(data, domain):
+    TLSAs = []
     services_definition = data[0]
     certificates = data[1].get(domain, {})
     for fqdn, params in certificates.items():
         for service in params["services"]:
             for port in services_definition[service]["ports"]:
                 for cert in params["certs"]:
-                    print genTLSA('%s.' % fqdn, cert, port, services_definition[service]["transport"], certtype=3, selector=0, reftype=2, compat=True)
+                    TLSAs.append(genTLSA('%s.' % fqdn, cert, port, services_definition[service]["transport"], certtype=3, selector=0, reftype=2, compat=True))
+    return TLSAs
 
 
 def generate_domain(servers, domain):
+    TLSAs = []
     for server in servers:
         with contextlib.closing(urllib2.urlopen("http://%s:6204" % server)) as f:
             data = json.loads(f.read())
-            _generate_domain(data, domain)
+            TLSAs.extend(_generate_domain(data, domain))
+    TLSAs.sort()
+    return TLSAs
 
 
 if __name__ == '__main__':
-    servers = ["10.7.0.1", "10.7.0.2"]
+    data = []
+    servers = ["10.7.0.1", "10.7.0.2", "10.7.0.4"]
     for domain in sys.argv[1:]:
-        generate_domain(servers, domain)
+        data.extend(generate_domain(servers, domain))
+    print "\n".join(data)

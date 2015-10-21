@@ -5,6 +5,7 @@ import json
 import time
 import netaddr
 import ConfigParser
+import collections
 
 CERT_BASE_PATH = "/etc/ssl/private/"
 
@@ -50,7 +51,7 @@ def list_domains():
     return domains
 
 def list_certs(domain):
-    certs = {}
+    certs = collections.defaultdict(lambda:{'services': [], 'certs': []})
     base_path = os.path.join(CERT_BASE_PATH, domain)
     if not os.path.isdir(base_path):
         return ""
@@ -63,29 +64,42 @@ def list_certs(domain):
             fqdn = domain
         else:
             fqdn = "%s.%s" % (elt, domain)
+
         elt_path = os.path.join(base_path, elt)
         cert_path = os.path.join(elt_path, 'ssl.crt')
         cert_path_new = os.path.join(elt_path, 'ssl.crt.new')
         cert_path_old = os.path.join(elt_path, 'ssl.crt.old')
         services_path = os.path.join(elt_path, 'services')
-        data = {'services': [], 'certs': []}
-        if (
-            os.path.isfile(cert_path_old) and
-            (time.time() - os.path.getmtime(cert_path_old)) < (3600 * 24 * 30)
-        ):
-            with open(cert_path_old) as f:
-                data['certs'].append(f.read())
-        for path in [cert_path, cert_path_new]:
-            if os.path.isfile(path):
-                with open(path) as f:
-                    data['certs'].append(f.read())
-        if os.path.isfile(services_path):
-            with open(services_path) as f:
+        alias_path = os.path.join(elt_path, 'alias')
+
+        alias = [fqdn]
+        if os.path.isfile(alias_path):
+            with open(alias_path) as f:
                 for line in iter(f.readline, ""):
-                    data['services'].append(line.strip())
-                    services.add(line.strip())
-        if data['certs']:
-            certs[fqdn] = data
+                   elt = line.strip()
+                   if len(elt)>1 and elt[-1] == '.':
+                       alias.append(elt[:-1])
+                   elif elt and not elt[-1] == '.':
+                       alias.append("%s.%s" % (elt, domain))
+                   else:
+                       continue
+
+        for fqdn in alias:
+            if (
+                os.path.isfile(cert_path_old) and
+                (time.time() - os.path.getmtime(cert_path_old)) < (3600 * 24 * 30)
+            ):
+                with open(cert_path_old) as f:
+                    certs[fqdn]['certs'].append(f.read())
+            for path in [cert_path, cert_path_new]:
+                if os.path.isfile(path):
+                    with open(path) as f:
+                        certs[fqdn]['certs'].append(f.read())
+            if os.path.isfile(services_path):
+                with open(services_path) as f:
+                    for line in iter(f.readline, ""):
+                        certs[fqdn]['services'].append(line.strip())
+                        services.add(line.strip())
     
     return certs
 
