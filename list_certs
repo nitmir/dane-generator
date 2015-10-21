@@ -88,6 +88,7 @@ def list_certs(domain):
     return certs
 
 if __name__ == '__main__':
-    data = (services_definition(), list_domains())
+    domains = list_domains()
+    data = (services_definition(), domains)
     render(json.dumps(data, indent=4))
     time.sleep(1)
