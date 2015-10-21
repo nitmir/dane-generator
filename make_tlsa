@@ -1,4 +1,5 @@
 #!/usr/bin/python
+import os
 import sys
 import ssl
 import binascii
@@ -6,6 +7,8 @@ import hashlib
 import urllib2
 import json
 import contextlib
+
+import config
 
 # reftype: 0 = plain cert, 1 = sha256, 2 = sha512
 # certytype: 0 = CA pinning, 1 = cert pinning, 2 = self trusted CA, 3 = self trusted cert
@@ -59,19 +62,25 @@ def _generate_domain(data, domain):
     return TLSAs
 
 
-def generate_domain(servers, domain):
+def generate_domain(domain):
     TLSAs = []
-    for server in servers:
-        with contextlib.closing(urllib2.urlopen("http://%s:6204" % server)) as f:
+    for server in config.SERVERS:
+        with contextlib.closing(urllib2.urlopen("http://%s:%s" % (server, config.PORT))) as f:
             data = json.loads(f.read())
             TLSAs.extend(_generate_domain(data, domain))
     TLSAs.sort()
-    return "\n".join(TLSAs)
+    return "\n".join(TLSAs) + "\n"
 
 
 if __name__ == '__main__':
-    data = []
     servers = ["10.7.0.1", "10.7.0.2", "10.7.0.4"]
-    for domain in sys.argv[1:]:
-        data.append(generate_domain(servers, domain))
-    print "\n".join(data)
+    bind_base_path = config.BIND_BASE_PATH
+    for domain in config.DOMAINS:
+        data = generate_domain(domain)
+        with open("%s%s" % (bind_base_path, domain)) as f1:
+            if f1.read() != data:
+                with open("%s%s.new" % (bind_base_path, domain), 'w') as f2:
+                    f2.write(data)
+                os.rename("%s%s.new" % (bind_base_path, domain), "%s%s" % (bind_base_path, domain))
+                print "%s done" % domain
+       
