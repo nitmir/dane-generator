@@ -1,0 +1,92 @@
+#!/usr/bin/env python
+import os
+import sys
+import json
+import time
+import netaddr
+import ConfigParser
+
+CERT_BASE_PATH = "/etc/ssl/private/"
+
+services = set()
+
+def render(data):
+    print "HTTP/1.1 200 OK"
+    print "Content-Type: text/plain; charset=utf-8"
+    print "Content-Length: %d" % len(data)
+    print ""
+    print data
+    print ""
+    sys.stdout.flush()
+
+def services_definition():
+    services_params = {}
+    config = ConfigParser.ConfigParser()
+    if not config.read(os.path.join(CERT_BASE_PATH, 'services.ini')):
+        raise ValueError("No services definition")
+    services_not_defined = services.difference(config.sections())
+    if services_not_defined:
+        raise ValueError("Services %s not defined" % ", ".join(services_not_defined))
+    for service in services:
+        params = dict(config.items(service))
+        if not "transport" or not "ports" in params:
+            raise ValueError("%s section as not transport or no ports defined" % service)
+        if not params["transport"] in ["tcp", "udp"]:
+            raise ValueError("transport must be 'tcp' or 'udp' in %s section" % service)
+        ports = []
+        for port in params["ports"].split():
+            ports.append(int(port.strip()))
+        services_params[service] = {'transport': params["transport"], 'ports': ports}
+    return services_params
+
+def list_domains():
+    domains = {}
+    dir = os.listdir(CERT_BASE_PATH)
+    for domain in dir:
+        data = list_certs(domain)
+        if data:
+            domains[domain] = data
+    return domains
+
+def list_certs(domain):
+    certs = {}
+    base_path = os.path.join(CERT_BASE_PATH, domain)
+    if not os.path.isdir(base_path):
+        return ""
+    dir = os.listdir(base_path)
+    dir.sort()
+    for elt in dir:
+        if not elt in ["wildcard"]:
+            fqdn = "%s.%s" % (elt, domain)
+        else:
+            continue
+        elt_path = os.path.join(base_path, elt)
+        cert_path = os.path.join(elt_path, 'ssl.crt')
+        cert_path_new = os.path.join(elt_path, 'ssl.crt.new')
+        cert_path_old = os.path.join(elt_path, 'ssl.crt.old')
+        services_path = os.path.join(elt_path, 'services')
+        data = {'services': [], 'certs': []}
+        if (
+            os.path.isfile(cert_path_old) and
+            (time.time() - os.path.getmtime(cert_path_old)) < (3600 * 24 * 30)
+        ):
+            with open(cert_path_old) as f:
+                data['certs'].append(f.read())
+        for path in [cert_path, cert_path_new]:
+            if os.path.isfile(path):
+                with open(path) as f:
+                    data['certs'].append(f.read())
+        if os.path.isfile(services_path):
+            with open(services_path) as f:
+                for line in iter(f.readline, ""):
+                    data['services'].append(line.strip())
+                    services.add(line.strip())
+        if data['certs']:
+            certs[fqdn] = data
+    
+    return certs
+
+if __name__ == '__main__':
+    data = (services_definition(), list_domains())
+    render(json.dumps(data, indent=4))
+    time.sleep(1)

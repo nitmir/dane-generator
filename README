@@ -1,0 +1,2 @@
+config pour inetd:
+10.7.0.1:6204    stream  tcp     nowait  root    /home/www-data/dane/list_certs
