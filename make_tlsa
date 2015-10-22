@@ -98,6 +98,18 @@ def generate_domain(domain):
     return "\n".join(RRs) + "\n"
 
 
+def update_serial(domain):
+    if config.UPDATE_SERIAL_SCRIPT:
+        p = subprocess.Popen([config.UPDATE_SERIAL_SCRIPT, domain])
+        code = p.wait()
+        if code > 0:
+            print "Serial of zone %s need to be updated" % domain
+        else:
+            print "Zone %s updated" % domain
+    else:
+        print "Serial of zone %s need to be updated" % domain
+
+
 if __name__ == '__main__':
     servers = ["10.7.0.1", "10.7.0.2", "10.7.0.4"]
     bind_base_path = config.BIND_BASE_PATH
@@ -108,5 +120,5 @@ if __name__ == '__main__':
                 with open("%s%s.new" % (bind_base_path, domain), 'w') as f2:
                     f2.write(data)
                 os.rename("%s%s.new" % (bind_base_path, domain), "%s%s" % (bind_base_path, domain))
-                print "%s done" % domain
-       
+                update_serial(domain)
+
