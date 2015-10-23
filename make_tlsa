@@ -85,11 +85,11 @@ def _generate_domain(data, domain):
         for service in params["services"]:
             for port in services_definition[service]["ports"]:
                 for cert in params["certs"]:
-                    RRs.append(genTLSA(dn, cert, port, services_definition[service]["transport"], certtype=3, selector=0, reftype=2, compat=False))
+                    RRs.append(genTLSA(dn + '.', cert, port, services_definition[service]["transport"], certtype=3, selector=0, reftype=2, compat=False))
     ssh_certificates = data[2].get(domain, {})
     for dn, certs in ssh_certificates.items():
         for cert in certs:
-            sshfp_rr = genSSHFP(dn, cert)
+            sshfp_rr = genSSHFP(dn + '.', cert)
             if sshfp_rr:
                 RRs.append(sshfp_rr)
     return RRs

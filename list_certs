@@ -72,9 +72,9 @@ def list_certs(domains, domain):
         if elt in ["wildcard"]:
             continue
         elif elt == "Main":
-            dn = ""
+            dn = domain
         else:
-            dn = elt
+            dn = "%s.%s" % (elt, domain)
 
         elt_path = os.path.join(base_path, elt)
         cert_path = os.path.join(elt_path, 'ssl.crt')
@@ -91,10 +91,9 @@ def list_certs(domains, domain):
                    if len(elt)>1 and elt[-1] == '.':
                        elt = elt[:-1]
                        domain = find_domain(elt)
-                       dn = find_local_part(elt, domain)
-                       alias.append((dn, domain))
-                   elif elt and not elt[-1] == '.':
                        alias.append((elt, domain))
+                   elif elt and not elt[-1] == '.':
+                       alias.append(("%s.%s" % (elt, domain), domain))
                    else:
                        raise ValueError("Alias %s not recognized" % elt)
 
@@ -167,8 +166,7 @@ def list_sshkey():
                 with open(os.path.join(config.SSH_KEYS, elt)) as f:
                     fqdn = gethostname()
                     domain = find_domain(fqdn)
-                    hostname = find_local_part(fqdn, domain)
-                    certs[domain][hostname].append(f.read().strip())
+                    certs[domain][fqdn].append(f.read().strip())
     return certs
 
 def gethostname():
