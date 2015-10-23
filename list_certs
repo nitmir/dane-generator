@@ -44,29 +44,37 @@ def services_definition():
     return services_params
 
 def list_domains():
-    domains = {}
+    domains = collections.defaultdict(
+        lambda:collections.defaultdict(
+            lambda:{
+                'services': set(),
+                'certs': set()
+            }
+        )
+    )
     dir = os.listdir(config.CERT_BASE_PATH)
     for domain in dir:
         if domain not in ["Archive"]:
-            data = list_certs(domain)
-            if data:
-                domains[domain] = data
+            domains = list_certs(domains, domain)
+
+    for domain in domains:
+        for key, value in domains[domain].items():
+            domains[domain][key] = {'services': list(value['services']), 'certs': list(value['certs'])}
     return domains
 
-def list_certs(domain):
-    certs = collections.defaultdict(lambda:{'services': set(), 'certs': set()})
+def list_certs(domains, domain):
     base_path = os.path.join(config.CERT_BASE_PATH, domain)
     if not os.path.isdir(base_path):
-        return ""
+        return domains
     dir = os.listdir(base_path)
     dir.sort()
     for elt in dir:
         if elt in ["wildcard"]:
             continue
         elif elt == "Main":
-            fqdn = domain
+            dn = ""
         else:
-            fqdn = "%s.%s" % (elt, domain)
+            dn = elt
 
         elt_path = os.path.join(base_path, elt)
         cert_path = os.path.join(elt_path, 'ssl.crt')
@@ -75,37 +83,38 @@ def list_certs(domain):
         services_path = os.path.join(elt_path, 'services')
         alias_path = os.path.join(elt_path, 'alias')
 
-        alias = [fqdn]
+        alias = [(dn, domain)]
         if os.path.isfile(alias_path):
             with open(alias_path) as f:
                 for line in iter(f.readline, ""):
                    elt = line.strip()
                    if len(elt)>1 and elt[-1] == '.':
-                       alias.append(elt[:-1])
+                       elt = elt[:-1]
+                       domain = find_domain(elt)
+                       dn = find_local_part(elt, domain)
+                       alias.append((dn, domain))
                    elif elt and not elt[-1] == '.':
-                       alias.append("%s.%s" % (elt, domain))
+                       alias.append((elt, domain))
                    else:
-                       continue
+                       raise ValueError("Alias %s not recognized" % elt)
 
-        for fqdn in alias:
+        for dn, domain in alias:
             if (
                 os.path.isfile(cert_path_old) and
                 (time.time() - os.path.getmtime(cert_path_old)) < (3600 * 24 * 30)
             ):
                 with open(cert_path_old) as f:
-                    certs[fqdn]['certs'].add(f.read())
+                    domains[domain][dn]['certs'].add(f.read())
             for path in [cert_path, cert_path_new]:
                 if os.path.isfile(path):
                     with open(path) as f:
-                        certs[fqdn]['certs'].add(f.read())
+                        domains[domain][dn]['certs'].add(f.read())
             if os.path.isfile(services_path):
                 with open(services_path) as f:
                     for line in iter(f.readline, ""):
-                        certs[fqdn]['services'].add(line.strip())
+                        domains[domain][dn]['services'].add(line.strip())
                         services.add(line.strip())
-    for key, value in certs.items():
-        certs[key] = {'services': list(value['services']), 'certs': list(value['certs'])}
-    return certs
+    return domains
 
 def read_request():
     try:
@@ -137,6 +146,10 @@ def render_error(error):
     sys.stdout.flush()
 
 
+def find_local_part(fqdn, domain):
+    dn = fqdn[:-len(domain)-1]
+    return dn
+
 def find_domain(fqdn):
     fqdn = fqdn.split('.')
     for i in range(len(fqdn)):
@@ -152,8 +165,9 @@ def list_sshkey():
         for elt in dir:
             if elt.endswith(".pub"):
                 with open(os.path.join(config.SSH_KEYS, elt)) as f:
-                    hostname = gethostname()
-                    domain = find_domain(hostname)
+                    fqdn = gethostname()
+                    domain = find_domain(fqdn)
+                    hostname = find_local_part(fqdn, domain)
                     certs[domain][hostname].append(f.read().strip())
     return certs
 

@@ -9,6 +9,8 @@ services utilisant le certificat dans :
 
 alias de domaine (en plus de [dns_name].[dns_zone]) dans :
     /etc/ssl/private/[dns_zone]/[dns_name]/alias
+    les fqdn doivent se finir par un '.' sinon le nom
+    est supposé relatif
 
 Définition des services dans :
     /etc/ssl/private/service.ini
