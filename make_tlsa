@@ -76,6 +76,27 @@ def hashCert(reftype,certblob):
     return hashobj.hexdigest().upper()
 
 
+def validate_services_definition(data, server):
+    conf = data[0]
+    certs = data[1]
+    if not conf:
+        raise ValueError("No services definition on %s" % server)
+    for service, params in conf.items():
+        if not "transport" or not "ports" in params:
+            raise ValueError("%s section as not transport or no ports defined on %s" % (service, server))
+        if not params["transport"] in ["tcp", "udp"]:
+            raise ValueError("transport must be 'tcp' or 'udp' in %s section on %s" % (service, server))
+        for port in params["ports"]:
+            if not isinstance(port, int):
+                raise ValueError("ports should be integer in %s section on %s" % (service, server))
+    certs_services = set()
+    for domain, dns in certs.items():
+        for dn, params in dns.items():
+            for service in params["services"]:
+                certs_services.add(service)
+    services_not_defined = certs_services.difference(conf.keys())
+    if services_not_defined:
+        raise ValueError("Services %s not defined on %s" % (", ".join(services_not_defined), server))
 
 def _generate_domain(data, domain):
     RRs = []
@@ -100,6 +121,7 @@ def generate_domain(domain):
     for server in config.SERVERS:
         with contextlib.closing(urllib2.urlopen("http://%s:%s" % (server, config.PORT))) as f:
             data = json.loads(f.read())
+            validate_services_definition(data, server)
             RRs.extend(_generate_domain(data, domain))
     RRs.sort()
     return "\n".join(RRs) + "\n"

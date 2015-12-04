@@ -27,20 +27,16 @@ def services_definition():
     services_params = {}
     conf = ConfigParser.ConfigParser()
     if not conf.read(os.path.join(config.CERT_BASE_PATH, 'services.ini')):
-        raise ValueError("No services definition")
-    services_not_defined = services.difference(conf.sections())
-    if services_not_defined:
-        raise ValueError("Services %s not defined" % ", ".join(services_not_defined))
-    for service in services:
+        return services_params
+    for service in services.intersection(conf.sections()):
         params = dict(conf.items(service))
-        if not "transport" or not "ports" in params:
-            raise ValueError("%s section as not transport or no ports defined" % service)
-        if not params["transport"] in ["tcp", "udp"]:
-            raise ValueError("transport must be 'tcp' or 'udp' in %s section" % service)
         ports = []
-        for port in params["ports"].split():
-            ports.append(int(port.strip()))
-        services_params[service] = {'transport': params["transport"], 'ports': ports}
+        for port in params.get("ports", "").split():
+            try:
+                ports.append(int(port.strip()))
+            except ValueError:
+                ports.append(port.strip())
+        services_params[service] = {'transport': params.get("transport"), 'ports': ports}
     return services_params
 
 def list_domains():
