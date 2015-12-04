@@ -53,10 +53,59 @@ def list_domains():
         if domain not in ["Archive"]:
             domains = list_certs(domains, domain)
 
+    live_cert_path = os.path.join(config.LETSENCRYPT_BASE_PATH, "live")
+    for fqdn in os.listdir(live_cert_path):
+        domains = list_letsencrypt(domains, fqdn)
+
     for domain in domains:
         for key, value in domains[domain].items():
             domains[domain][key] = {'services': list(value['services']), 'certs': list(value['certs'])}
     return domains
+
+
+def get_cert_names(path):
+    readnames = os.path.join(os.path.dirname(sys.argv[0]), "readnames")
+    cmd = [readnames, path]
+    p = subprocess.Popen(cmd, stdout=subprocess.PIPE)
+    return p.communicate()[0].strip().split(',')
+
+def list_letsencrypt(domains, fqdn):
+    base_path = os.path.join(config.LETSENCRYPT_BASE_PATH, "live", fqdn)
+    if not os.path.isdir(base_path):
+        return domains
+    rev = int(os.path.basename(os.readlink(os.path.join(base_path, "cert.pem")))[4:-4])
+    archive_path = os.path.join(config.LETSENCRYPT_BASE_PATH, "archive", fqdn)
+    if not os.path.isdir(archive_path):
+        return domains
+
+    services_path = os.path.join(base_path, 'services')
+    if os.path.isfile(services_path):
+        services_data = set()
+        with open(services_path) as f:
+            for line in iter(f.readline, ""):
+                services_data.add(line.strip())
+                services.add(line.strip())
+    else:
+        services_data = None
+    for i in range(rev - 1, rev + 1):
+        cert_path = os.path.join(archive_path, "cert%d.pem" % i)
+        if not os.path.isfile(cert_path):
+            continue
+        if os.path.isfile(cert_path):
+            with open(cert_path) as f:
+                cert_data = f.read()
+        else:
+            cert_data = None
+        alias = get_cert_names(cert_path)
+        for dn in alias:
+            domain = find_domain(dn)
+            if cert_data:
+                domains[domain][dn]['certs'].add(cert_data)
+            if services_data:
+                for service in services_data:
+                    domains[domain][dn]['services'].add(service)
+    return domains
+
 
 def list_certs(domains, domain):
     base_path = os.path.join(config.CERT_BASE_PATH, domain)

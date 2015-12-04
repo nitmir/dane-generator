@@ -1,0 +1,4 @@
+#!/bin/bash
+#data=$(openssl x509 -in "$1" -noout -text)
+#CN=$(echo $data | grep 'Subject: CN' | awk -F = '{print $2}')
+openssl x509 -in "$1" -noout -text | grep -A 1 'Subject Alternative Name:' | tail -n 1 | sed 's/ *DNS://g'
