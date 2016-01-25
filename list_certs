@@ -8,6 +8,7 @@ import ConfigParser
 import collections
 import itertools
 import subprocess
+from OpenSSL import crypto
 
 import config
 
@@ -63,11 +64,16 @@ def list_domains():
     return domains
 
 
-def get_cert_names(path):
-    readnames = os.path.join(os.path.dirname(sys.argv[0]), "readnames")
-    cmd = [readnames, path]
-    p = subprocess.Popen(cmd, stdout=subprocess.PIPE)
-    return p.communicate()[0].strip().split(',')
+def get_cert_names(cert):
+    names = set()
+    names.add(dict(cert.get_subject().get_components())['CN'])
+    for i in range(cert.get_extension_count()):
+        if cert.get_extension(i).get_short_name() == 'subjectAltName':
+            break
+    subjectAltName = cert.get_extension(i)
+    for name in subjectAltName.get_data().split("\x82")[1:]:
+        names.add(name[1:])
+    return names
 
 def list_letsencrypt(domains, fqdn):
     base_path = os.path.join(config.LETSENCRYPT_BASE_PATH, "live", fqdn)
@@ -79,31 +85,30 @@ def list_letsencrypt(domains, fqdn):
         return domains
 
     services_path = os.path.join(base_path, 'services')
+    services_data = set()
     if os.path.isfile(services_path):
-        services_data = set()
         with open(services_path) as f:
             for line in iter(f.readline, ""):
                 services_data.add(line.strip())
                 services.add(line.strip())
-    else:
-        services_data = None
+
     for i in range(rev - 1, rev + 1):
         cert_path = os.path.join(archive_path, "cert%d.pem" % i)
-        if not os.path.isfile(cert_path):
-            continue
         if os.path.isfile(cert_path):
             with open(cert_path) as f:
                 cert_data = f.read()
-        else:
-            cert_data = None
-        alias = get_cert_names(cert_path)
-        for dn in alias:
-            domain = find_domain(dn)
-            if cert_data:
-                domains[domain][dn]['certs'].add(cert_data)
-            if services_data:
-                for service in services_data:
-                    domains[domain][dn]['services'].add(service)
+            cert = crypto.load_certificate(crypto.FILETYPE_PEM, cert_data)
+            if not cert.has_expired():
+                alias = get_cert_names(cert)
+                for dn in alias:
+                    try:
+                        domain = find_domain(dn)
+                    except ValueError:
+                        continue
+                    domains[domain][dn]['certs'].add(cert_data)
+                    if services_data:
+                        for service in services_data:
+                            domains[domain][dn]['services'].add(service)
     return domains
 
 
