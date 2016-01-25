@@ -12,6 +12,8 @@ import subprocess
 
 import config
 
+force = False
+
 sshfp_algo = {
     "rsa" : 1,
     "dss" : 2,
@@ -119,10 +121,15 @@ def _generate_domain(data, domain):
 def generate_domain(domain):
     RRs = []
     for server in config.SERVERS:
-        with contextlib.closing(urllib2.urlopen("http://%s:%s" % (server, config.PORT))) as f:
-            data = json.loads(f.read())
-            validate_services_definition(data, server)
-            RRs.extend(_generate_domain(data, domain))
+        try:
+            with contextlib.closing(urllib2.urlopen("http://%s:%s" % (server, config.PORT))) as f:
+                data = json.loads(f.read())
+                validate_services_definition(data, server)
+                RRs.extend(_generate_domain(data, domain))
+        except urllib2.URLError:
+            sys.stderr.write("Failed to connect to http://%s:%s\n use --force to force" % (server, config.PORT))
+            if not force:
+                sys.exit(1)
     RRs.sort()
     return "\n".join(RRs) + "\n"
 
@@ -142,6 +149,7 @@ def update_serial(domain):
 if __name__ == '__main__':
     servers = ["10.7.0.1", "10.7.0.2", "10.7.0.4"]
     bind_base_path = config.BIND_BASE_PATH
+    force = "--force" in sys.argv
     for domain in config.DOMAINS:
         data = generate_domain(domain)
         with open("%s%s" % (bind_base_path, domain)) as f1:
