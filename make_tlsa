@@ -58,7 +58,6 @@ def genTLSA(hostname, pemcert, port, proto, certtype=1, selector=0, reftype=1, c
     certhex = hashCert(reftype, dercert)
     if compat:
         # octet length is half of the string length; remember certtype and reftype are part of the length so +2
-#        return "_443._tcp.%s IN TYPE65468 \# %s 0%s0%s%s"%(hostname, len(certhex)/2+2, certtype, reftype, certhex )
         return "_%s._%s%s\tIN\tTYPE52 \# %s 0%s0%s0%s%s"%(port, proto, hostname, len(certhex)/2 +3, certtype, selector, reftype, certhex)
     else:
         return "_%s._%s%s\tIN\tTLSA %s %s %s %s"%(port, proto, hostname, certtype, selector, reftype, certhex)
@@ -135,7 +134,7 @@ def generate_domain(domain):
 
 
 def update_serial(domain):
-    if config.UPDATE_SERIAL_SCRIPT:
+    if config.UPDATE_SERIAL_SCRIPT and os.path.isfile(config.UPDATE_SERIAL_SCRIPT):
         p = subprocess.Popen([config.UPDATE_SERIAL_SCRIPT, domain])
         code = p.wait()
         if code > 0:
@@ -147,7 +146,7 @@ def update_serial(domain):
 
 
 if __name__ == '__main__':
-    servers = ["10.7.0.1", "10.7.0.2", "10.7.0.4"]
+    servers = config.SERVERS
     bind_base_path = config.BIND_BASE_PATH
     force = "--force" in sys.argv
     for domain in config.DOMAINS:

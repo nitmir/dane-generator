@@ -1,22 +1,35 @@
-config pour inetd:
+config for /etc/inetd.conf:
     ip:6204    stream  tcp     nowait  root    /home/www-data/dane/list_certs
 
-cherche des certificats dans :
+list_certs is a pseudo http server, echo "GET / DD" | ./list_certs should produce a json on stdout with certificates infos.
+
+search for certificates in the following locations:
     /etc/ssl/private/[dns_zone]/[dns_name]/ssl.crt
+    /etc/ssl/private/[dns_zone]/[dns_name]/ssl.crt.new
+    /etc/ssl/private/[dns_zone]/[dns_name]/ssl.crt.old
+    /etc/letsencrypt/live/[dns_name].[dns_zone]/cert.pem  --> ../../archive/[dns_name].[dns_zone]/cert(i).pem
+    /etc/letsencrypt/archive/[dns_name].[dns_zone]/cert(i-1).pem
 
-services utilisant le certificat dans :
+expired certificates are excluded.
+
+service names using the certificate, one by line:
     /etc/ssl/private/[dns_zone]/[dns_name]/services
+    /etc/letsencrypt/live/[dns_name].[dns_zone]/services
 
-alias de domaine (en plus de [dns_name].[dns_zone]) dans :
+Alias in:
     /etc/ssl/private/[dns_zone]/[dns_name]/alias
-    les fqdn doivent se finir par un '.' sinon le nom
-    est supposé relatif
+    fqdn must ends with '.'
+We use subjectAltnames and CN for letsencrypt certificates and any
+alias files in /etc/letsencrypt/live/* will be ignored
 
-Définition des services dans :
+Service definitions in:
     /etc/ssl/private/service.ini
 
-    Le format est le suivant:
+    Format the file like this:
         [service_name]
         transport=(tcp|udp)
         ports=port1 port2 port3
 
+search for ssh public keys in /etc/ssh/*.pub
+
+./make_tlsa will ask to all servers listed in config.py for json config and generate TLSA and SSHFP records in [BIND_BASE_PATH].[dns_zone]
