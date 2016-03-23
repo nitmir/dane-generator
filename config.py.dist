@@ -1,0 +1,38 @@
+# List of dns zones
+DOMAINS = ["example.com", "example.org", "example.net"]
+# List of servers listening for requests on port PORT
+SERVERS = ["10.7.0.1", "10.7.0.2", "10.7.0.3"]
+PORT = 6204
+# Base path for manual sertificate. The path of a certificate
+# should be `CERT_BASE_PATH`/dns_zone/local_part/ssl.crt
+CERT_BASE_PATH = "/etc/ssl/private/"
+# Where to generate the dns zone file. It will use `BIND_BASE_PATH`.dns_zone
+BIND_BASE_PATH = "/etc/bind/generated/db.tlsa."
+# Base path for letsencrypt
+LETSENCRYPT_BASE_PATH = "/etc/letsencrypt/"
+# Base path for ssh keys
+SSH_KEYS = "/etc/ssh/"
+
+# A script taking as arguments dns zones names and then called
+# increment the dns zones serial and reload the zones.
+# See update_serial.example for an example script that
+# update serial of zone example.com if the zone file if
+# /etc/bind/zones/db.example.com and the serial is alone on a line
+# and of the forme YYYYMMDDNN like for bind9:
+# @               3600     IN SOA ns1.example.com. root.example.com. (
+#                                               2016032301 ; serial
+#                                               1d         ; refresh
+#                                               1h         ; retry
+#                                               1w         ; expire
+#                                               1h         ; minimum
+#                                              )
+
+UPDATE_SERIAL_SCRIPT = "/etc/bind/update_serial"
+
+
+# Set True your if your DNS server do not known the TLSA record type
+DNS_TLSA_COMPAT = False
+# reftype: 0 = plain cert, 1 = sha256, 2 = sha512
+# This is a list, so you can give multiple reftype and it will
+# result in multiple DNS records
+DNS_TLSA_REFTYPE = [2]
