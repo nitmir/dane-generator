@@ -1,25 +1,28 @@
 #!/usr/bin/python
+# stdlib modules
 import os
 import sys
 import ssl
-import binascii
+import json
+import base64
 import hashlib
 import urllib2
-import json
+import binascii
 import contextlib
-import base64
 import subprocess
 
+# local modules
 import config
 
 force = False
 
 sshfp_algo = {
-    "rsa" : 1,
-    "dss" : 2,
+    "rsa": 1,
+    "dss": 2,
     "ecdsa": 3,
     "ed25519": 4
 }
+
 
 def genSSHFP(hostname, cert):
     cert = cert.split()
@@ -34,36 +37,68 @@ def genSSHFP(hostname, cert):
     elif kind.startswith("ecdsa-"):
         kind = "ecdsa"
     if kind in sshfp_algo:
-        return '%s\tIN\tSSHFP %s %s %s' % (hostname, sshfp_algo[kind], 2, hashlib.sha256(base64.b64decode(cert)).hexdigest())
+        return '%s\tIN\tSSHFP %s %s %s' % (
+            hostname,
+            sshfp_algo[kind],
+            2,
+            hashlib.sha256(base64.b64decode(cert)).hexdigest()
+        )
+
 
 # reftype: 0 = plain cert, 1 = sha256, 2 = sha512
-# certytype: 0 = CA pinning, 1 = cert pinning, 2 = self trusted CA, 3 = self trusted cert
+# certytype:
+#    0 = CA pinning,
+#    1 = cert pinning,
+#    2 = self trusted CA,
+#    3 = self trusted cert
 # selector: 0 = full cert, 1 = SubjectPublicKeyInfo
 
-def genTLSA(hostname, pemcert, port, proto, certtype=1, selector=0, reftype=1, compat=True):
-    if not proto in ['tcp', 'udp']:
+def genTLSA(
+    hostname, pemcert, port, proto, certtype=1,
+    selector=0, reftype=1, compat=True
+):
+    if proto not in ['tcp', 'udp']:
         raise ValueError("proto should be tcp or udp, nor %s" % proto)
     if not isinstance(port, int):
         raise ValueError("port should be int")
+    if selector != 0:
+        raise NotImplemented("Selection must be 0")
+    if certtype not in [1, 3]:
+        raise NotImplemented("Only EE-cert supported right now")
     # errors will be thrown already before we get here
     dercert = ssl.PEM_cert_to_DER_cert(pemcert)
     if not dercert:
-        return
-
+        raise ValueError("Fail to decode PEM cert to DER")
     if hostname:
         hostname = ".%s" % hostname
 
-    if certtype not in [1, 3]:
-        raise Exception("Only EE-cert supported right now")
     certhex = hashCert(reftype, dercert)
     if compat:
-        # octet length is half of the string length; remember certtype and reftype are part of the length so +2
-        return "_%s._%s%s\tIN\tTYPE52 \# %s 0%s0%s0%s%s"%(port, proto, hostname, len(certhex)/2 +3, certtype, selector, reftype, certhex)
+        # octet length is half of the string length;
+        # remember certtype and reftype are part of the length so +2
+        return "_%s._%s%s\tIN\tTYPE52 \# %s 0%s0%s0%s%s" % (
+            port,
+            proto,
+            hostname,
+            len(certhex) / 2 + 3,
+            certtype,
+            selector,
+            reftype,
+            certhex
+        )
     else:
-        return "_%s._%s%s\tIN\tTLSA %s %s %s %s"%(port, proto, hostname, certtype, selector, reftype, certhex)
+        return "_%s._%s%s\tIN\tTLSA %s %s %s %s" % (
+            port,
+            proto,
+            hostname,
+            certtype,
+            selector,
+            reftype,
+            certhex
+        )
 
-# take PEM encoded EE-cert and DER encode it, then sha256 it
-def hashCert(reftype,certblob):
+
+def hashCert(reftype, certblob):
     if reftype == 0:
         return binascii.b2a_hex(certblob).upper()
     elif reftype == 1:
@@ -83,13 +118,28 @@ def validate_services_definition(data, server):
     if not conf:
         raise ValueError("No services definition on %s" % server)
     for service, params in conf.items():
-        if not "transport" or not "ports" in params:
-            raise ValueError("%s section as not transport or no ports defined on %s" % (service, server))
-        if not params["transport"] in ["tcp", "udp"]:
-            raise ValueError("transport must be 'tcp' or 'udp' in %s section on %s" % (service, server))
+        if "transport" not in params or "ports" not in params:
+            raise ValueError(
+                "%s section as not transport or no ports defined on %s" % (
+                    service,
+                    server
+                )
+            )
+        if params["transport"] not in ["tcp", "udp"]:
+            raise ValueError(
+                "transport must be 'tcp' or 'udp' in %s section on %s" % (
+                    service,
+                    server
+                )
+            )
         for port in params["ports"]:
             if not isinstance(port, int):
-                raise ValueError("ports should be integer in %s section on %s" % (service, server))
+                raise ValueError(
+                    "ports should be integer in %s section on %s" % (
+                        service,
+                        server
+                    )
+                )
     certs_services = set()
     for domain, dns in certs.items():
         for dn, params in dns.items():
@@ -97,9 +147,17 @@ def validate_services_definition(data, server):
                 certs_services.add(service)
     services_not_defined = certs_services.difference(conf.keys())
     if services_not_defined:
-        raise ValueError("Services %s not defined on %s" % (", ".join(services_not_defined), server))
+        raise ValueError(
+            "Services %s not defined on %s" % (
+                ", ".join(services_not_defined),
+                server
+            )
+        )
 
-def _generate_domain(data, domain):
+
+def _generate_domain(data, domain, done=None):
+    if done is None:
+        done = set()
     RRs = []
     services_definition = data[0]
     certificates = data[1].get(domain, {})
@@ -107,26 +165,48 @@ def _generate_domain(data, domain):
         for service in params["services"]:
             for port in services_definition[service]["ports"]:
                 for cert in params["certs"]:
-                    RRs.append(genTLSA(dn + '.', cert, port, services_definition[service]["transport"], certtype=3, selector=0, reftype=2, compat=False))
+                    for reftype in config.DNS_TLSA_REFTYPE:
+                        tlsa_rr = genTLSA(
+                            dn + '.',
+                            cert,
+                            port,
+                            services_definition[service]["transport"],
+                            certtype=3,
+                            selector=0,
+                            reftype=reftype,
+                            compat=config.DNS_TLSA_COMPAT
+                        )
+                        if tlsa_rr not in done:
+                            RRs.append(tlsa_rr)
+                            done.add(tlsa_rr)
     ssh_certificates = data[2].get(domain, {})
     for dn, certs in ssh_certificates.items():
         for cert in certs:
             sshfp_rr = genSSHFP(dn + '.', cert)
-            if sshfp_rr:
+            if sshfp_rr and sshfp_rr not in done:
                 RRs.append(sshfp_rr)
+                done.add(sshfp_rr)
     return RRs
 
 
 def generate_domain(domain):
+    done = set()
     RRs = []
     for server in config.SERVERS:
         try:
-            with contextlib.closing(urllib2.urlopen("http://%s:%s" % (server, config.PORT))) as f:
+            with contextlib.closing(
+                urllib2.urlopen("http://%s:%s" % (server, config.PORT))
+            ) as f:
                 data = json.loads(f.read())
                 validate_services_definition(data, server)
-                RRs.extend(_generate_domain(data, domain))
+                RRs.extend(_generate_domain(data, domain, done))
         except urllib2.URLError:
-            sys.stderr.write("Failed to connect to http://%s:%s\n use --force to force" % (server, config.PORT))
+            sys.stderr.write(
+                "Failed to connect to http://%s:%s\n use --force to force" % (
+                    server,
+                    config.PORT
+                )
+            )
             if not force:
                 sys.exit(1)
     RRs.sort()
@@ -134,7 +214,10 @@ def generate_domain(domain):
 
 
 def update_serial(domain):
-    if config.UPDATE_SERIAL_SCRIPT and os.path.isfile(config.UPDATE_SERIAL_SCRIPT):
+    if (
+        config.UPDATE_SERIAL_SCRIPT and
+        os.path.isfile(config.UPDATE_SERIAL_SCRIPT)
+    ):
         p = subprocess.Popen([config.UPDATE_SERIAL_SCRIPT, domain])
         code = p.wait()
         if code > 0:
@@ -155,6 +238,8 @@ if __name__ == '__main__':
             if f1.read() != data:
                 with open("%s%s.new" % (bind_base_path, domain), 'w') as f2:
                     f2.write(data)
-                os.rename("%s%s.new" % (bind_base_path, domain), "%s%s" % (bind_base_path, domain))
+                os.rename(
+                    "%s%s.new" % (bind_base_path, domain),
+                    "%s%s" % (bind_base_path, domain)
+                )
                 update_serial(domain)
-

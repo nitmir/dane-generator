@@ -1,20 +1,26 @@
 #!/usr/bin/python
+# stdlib modules
 import os
 import sys
 import json
 import time
-import netaddr
 import ConfigParser
 import collections
 import itertools
 import subprocess
+
+# packaged modules
 from OpenSSL import crypto
 
+# local modules
 import config
 
+# Glocal set of services ever used
 services = set()
 
+
 def render(data):
+    """A helper class to print data as a successfull http request"""
     print "HTTP/1.0 200 OK"
     print "Content-Type: text/plain; charset=utf-8"
     print "Content-Length: %d" % len(data)
@@ -24,11 +30,14 @@ def render(data):
     print ""
     sys.stdout.flush()
 
+
 def services_definition():
+    """Return a dict describing `config.CERT_BASE_PATH`/services.ini"""
     services_params = {}
     conf = ConfigParser.ConfigParser()
     if not conf.read(os.path.join(config.CERT_BASE_PATH, 'services.ini')):
         return services_params
+    # we only care about services currently in use
     for service in services.intersection(conf.sections()):
         params = dict(conf.items(service))
         ports = []
@@ -37,34 +46,45 @@ def services_definition():
                 ports.append(int(port.strip()))
             except ValueError:
                 ports.append(port.strip())
-        services_params[service] = {'transport': params.get("transport"), 'ports': ports}
+        services_params[service] = {
+            'transport': params.get("transport"),
+            'ports': ports
+        }
     return services_params
 
+
 def list_domains():
+    """Create the `domains` dict and populate it"""
     domains = collections.defaultdict(
-        lambda:collections.defaultdict(
-            lambda:{
+        lambda: collections.defaultdict(
+            lambda: {
                 'services': set(),
                 'certs': set()
             }
         )
     )
-    dir = os.listdir(config.CERT_BASE_PATH)
-    for domain in dir:
-        if domain not in ["Archive"]:
-            domains = list_certs(domains, domain)
+    if os.path.isdir(config.CERT_BASE_PATH):
+        dir = os.listdir(config.CERT_BASE_PATH)
+        for domain in dir:
+            if domain not in ["Archive"]:
+                domains = list_certs(domains, domain)
 
     live_cert_path = os.path.join(config.LETSENCRYPT_BASE_PATH, "live")
-    for fqdn in os.listdir(live_cert_path):
-        domains = list_letsencrypt(domains, fqdn)
+    if os.path.isdir(live_cert_path):
+        for fqdn in os.listdir(live_cert_path):
+            domains = list_letsencrypt(domains, fqdn)
 
     for domain in domains:
         for key, value in domains[domain].items():
-            domains[domain][key] = {'services': list(value['services']), 'certs': list(value['certs'])}
+            domains[domain][key] = {
+                'services': list(value['services']),
+                'certs': list(value['certs'])
+            }
     return domains
 
 
 def get_cert_names(cert):
+    """Return the list of the CN + SAN names"""
     names = set()
     names.add(dict(cert.get_subject().get_components())['CN'])
     for i in range(cert.get_extension_count()):
@@ -75,37 +95,56 @@ def get_cert_names(cert):
         names.add(name[1:])
     return names
 
+
 def list_letsencrypt(domains, fqdn):
+    """List certificates in `config.LETSENCRYPT_BASE_PATH` for `fqdn`"""
+    # Make `base_path` the path of live certificates
     base_path = os.path.join(config.LETSENCRYPT_BASE_PATH, "live", fqdn)
+    # If it do not exists, ignore it
     if not os.path.isdir(base_path):
         return domains
-    rev = int(os.path.basename(os.readlink(os.path.join(base_path, "cert.pem")))[4:-4])
+    # Get the revision of the cert currently used
+    rev = int(
+        os.path.basename(
+            os.readlink(os.path.join(base_path, "cert.pem"))
+        )[4:-4]
+    )
+    # We now work in the archived certificates
     archive_path = os.path.join(config.LETSENCRYPT_BASE_PATH, "archive", fqdn)
+    # If it do not exists, ignore it
     if not os.path.isdir(archive_path):
         return domains
 
+    # If there is a `services` file, we read services, one by line
     services_path = os.path.join(base_path, 'services')
     services_data = set()
     if os.path.isfile(services_path):
         with open(services_path) as f:
             for line in iter(f.readline, ""):
                 services_data.add(line.strip())
+                # add to the global services set
                 services.add(line.strip())
 
+    # We considere the current revision and the previous one
     for i in range(rev - 1, rev + 1):
         cert_path = os.path.join(archive_path, "cert%d.pem" % i)
+        # If `cert_path` exists
         if os.path.isfile(cert_path):
             with open(cert_path) as f:
                 cert_data = f.read()
             cert = crypto.load_certificate(crypto.FILETYPE_PEM, cert_data)
+            # and is it is not expired
             if not cert.has_expired():
                 alias = get_cert_names(cert)
+                # for each name in the certificates
                 for dn in alias:
                     try:
                         domain = find_domain(dn)
                     except ValueError:
                         continue
+                    # we add it to the `domains` dictionnary
                     domains[domain][dn]['certs'].add(cert_data)
+                    # we also add services for this name
                     if services_data:
                         for service in services_data:
                             domains[domain][dn]['services'].add(service)
@@ -113,6 +152,9 @@ def list_letsencrypt(domains, fqdn):
 
 
 def list_certs(domains, domain):
+    """List certificates in `config.CERT_BASE_PATH` for `domain`.
+       Return `domains`, a dict
+       domain -> fqdn -> (certs|services) -> (certs|services) list"""
     base_path = os.path.join(config.CERT_BASE_PATH, domain)
     if not os.path.isdir(base_path):
         return domains
@@ -137,20 +179,22 @@ def list_certs(domains, domain):
         if os.path.isfile(alias_path):
             with open(alias_path) as f:
                 for line in iter(f.readline, ""):
-                   elt = line.strip()
-                   if len(elt)>1 and elt[-1] == '.':
-                       elt = elt[:-1]
-                       domain = find_domain(elt)
-                       alias.append((elt, domain))
-                   elif elt and not elt[-1] == '.':
-                       alias.append(("%s.%s" % (elt, domain), domain))
-                   else:
-                       raise ValueError("Alias %s not recognized" % elt)
+                    elt = line.strip()
+                    if len(elt) > 1 and elt[-1] == '.':
+                        elt = elt[:-1]
+                        domain = find_domain(elt)
+                        alias.append((elt, domain))
+                    elif elt and not elt[-1] == '.':
+                        alias.append(("%s.%s" % (elt, domain), domain))
+                    else:
+                        raise ValueError("Alias %s not recognized" % elt)
 
         for dn, domain in alias:
             if (
                 os.path.isfile(cert_path_old) and
-                (time.time() - os.path.getmtime(cert_path_old)) < (3600 * 24 * 30)
+                (
+                    time.time() - os.path.getmtime(cert_path_old)
+                ) < (3600 * 24 * 30)
             ):
                 with open(cert_path_old) as f:
                     domains[domain][dn]['certs'].add(f.read())
@@ -162,19 +206,30 @@ def list_certs(domains, domain):
                 with open(services_path) as f:
                     for line in iter(f.readline, ""):
                         domains[domain][dn]['services'].add(line.strip())
+                        # add to the global services set
                         services.add(line.strip())
     return domains
 
+
 def read_request():
+    """A helper function to read a http request.
+       Return a tuple `method` `param` `version`
+       `method will usually be GET, param / and version HTTP/1.1,
+       but we do not really care here"""
     try:
         method, param, version = sys.stdin.readline().split()
     except ValueError:
         raise ValueError("forbidden")
     return method, param, version
 
+
 def read_header():
+    """A helper function to read http request headers on stdin.
+       Return the headers as a dict"""
     headers = {}
-    for line in itertools.takewhile(lambda x:bool(x.strip()), iter(sys.stdin.readline, "\r\n")):
+    for line in itertools.takewhile(
+        lambda x: bool(x.strip()), iter(sys.stdin.readline, "\r\n")
+    ):
         line = line.strip()
         try:
             key, value = line.split(':', 1)
@@ -183,7 +238,9 @@ def read_header():
         headers[key.strip()] = value.strip()
     return headers
 
+
 def render_error(error):
+    """A helper function to render error as http 500 errors on stdout"""
     msg = "%s" % error
     print "HTTP/1.0 500 ERROR"
     print "Content-Type: text/plain; charset=utf-8"
@@ -196,10 +253,13 @@ def render_error(error):
 
 
 def find_local_part(fqdn, domain):
+    """Remove `domain` from `fqdn` and return the local part"""
     dn = fqdn[:-len(domain)-1]
     return dn
 
+
 def find_domain(fqdn):
+    """Find the most specific domain for `fqdn`"""
     fqdn = fqdn.split('.')
     for i in range(len(fqdn)):
         domain = ".".join(fqdn[i:])
@@ -207,8 +267,11 @@ def find_domain(fqdn):
             return domain
     raise ValueError("domain not found for %s" % fqdn)
 
+
 def list_sshkey():
-    certs = collections.defaultdict(lambda:collections.defaultdict(list))
+    """Search for ssh public keys and return a dict
+       domain -> fqdn -> pub key list"""
+    certs = collections.defaultdict(lambda: collections.defaultdict(list))
     if os.path.isdir(config.SSH_KEYS):
         dir = os.listdir(config.SSH_KEYS)
         for elt in dir:
@@ -219,7 +282,10 @@ def list_sshkey():
                     certs[domain][fqdn].append(f.read().strip())
     return certs
 
+
 def gethostname():
+    """On my computer os.getfqdn() return localhost,
+       so I use this dirty tricks"""
     p = subprocess.Popen(["/bin/hostname", "-f"], stdout=subprocess.PIPE)
     return p.communicate()[0].strip()
 
@@ -228,6 +294,7 @@ if __name__ == '__main__':
         method, param, version = read_request()
         headers = read_header()
 
+        # this will populate the global services set
         domains = list_domains()
         services = services_definition()
         data = (services, domains, list_sshkey())
