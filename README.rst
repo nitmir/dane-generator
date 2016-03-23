@@ -8,13 +8,13 @@ public keys across multiples servers.
 Features
 --------
 
- * Collect informations from multiples servers
- * Support the letsencrypt files tree
- * Generate dns zone files to be included with
-   `$INCLUDE /etc/bind/generated/db.tlsa.example.com example.com.`
- * Only support plain certificate pinning for TLSA (not public key pinning, selector 0)
- * No CA pinning, only Certificate pinning (certytype 1 or 3)
- * Support usage of multiple hash algorithm (reftype 0, 1 or 2)
+* Collect informations from multiples servers
+* Support the letsencrypt files tree
+* Generate dns zone files to be included with
+  `$INCLUDE /etc/bind/generated/db.tlsa.example.com example.com.`
+* Only support plain certificate pinning for TLSA (not public key pinning, selector 0)
+* No CA pinning, only Certificate pinning (certytype 1 or 3)
+* Support usage of multiple hash algorithm (reftype 0, 1 or 2)
 
 Requirements
 ------------
@@ -53,16 +53,18 @@ Usage
 
 
 `list_certs` will search for certificates (expired certificates are excluded) in the following locations:
- *   `/etc/ssl/private/[dns_zone]/[dns_local_name]/ssl.crt`
- *   `/etc/ssl/private/[dns_zone]/[dns_local_name]/ssl.crt.new`
- *   `/etc/ssl/private/[dns_zone]/[dns_local_name]/ssl.crt.old`
- *   `/etc/letsencrypt/live/[dns_local_name].[dns_zone]/cert.pem  --> ../../archive/[dns_name].[dns_zone]/cert(i).pem`
- *   `/etc/letsencrypt/archive/[dns_name].[dns_zone]/cert(i-1).pem`
+
+*   `/etc/ssl/private/[dns_zone]/[dns_local_name]/ssl.crt`
+*   `/etc/ssl/private/[dns_zone]/[dns_local_name]/ssl.crt.new`
+*   `/etc/ssl/private/[dns_zone]/[dns_local_name]/ssl.crt.old`
+*   `/etc/letsencrypt/live/[dns_local_name].[dns_zone]/cert.pem  --> ../../archive/[dns_name].[dns_zone]/cert(i).pem`
+*   `/etc/letsencrypt/archive/[dns_name].[dns_zone]/cert(i-1).pem`
 
 
 It will also read the files for finding which services use the certificates:
- *   `/etc/ssl/private/[dns_zone]/[dns_name]/services`
- *   `/etc/letsencrypt/live/[dns_name].[dns_zone]/services`
+
+*   `/etc/ssl/private/[dns_zone]/[dns_name]/services`
+*   `/etc/letsencrypt/live/[dns_name].[dns_zone]/services`
 
 The file `services` must have one service names by line
 
