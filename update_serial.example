@@ -1,0 +1,76 @@
+#!/bin/bash
+next=0
+for args in "$@"; do
+    if [ $next -ge 1 ]; then
+        view=$args
+        next=0
+    fi
+    if [[ "$args" = "--view" ]]; then
+        next=1
+    fi
+done
+
+if [ -z "$view" ]; then
+    view="internet"
+fi
+
+if [[ "$1" = "--view" ]]; then
+    shift 2
+fi
+
+if [ -z "$1" ]; then
+    echo "Usage: $0 (zone_name) [zone_name] [...] [--view view_name]"
+    exit 1
+fi
+
+echo Using view $view
+while [ -n "$1" ]; do
+
+file=$(echo /etc/bind/zones/db.$1)
+
+if [ ! -f "$file" ]; then
+    echo "File $file not found"
+    exit 1
+fi
+
+/usr/sbin/rndc freeze $1 IN $view &>/dev/null
+
+serial=$(grep '[0-9]\{10\}' "$file" | head -n 1 | awk '{print $1}')
+
+if [ -z "$serial" ]; then
+    echo "Serial not found"
+    exit 1
+fi
+
+if [ ${#serial} -ne 10 ]; then
+    echo "Bad serial $serial should be of length 10"
+    exit 1
+fi
+
+today=$(date +%Y%m%d)
+
+serial_date=${serial:0:8}
+serial_id=$(echo ${serial:8} | sed 's/^0*//')
+
+if [ "$serial_id" = "99" ]; then
+    echo "Maximum serial reach for today"
+    exit 1
+fi
+
+if [ $today = $serial_date ]; then
+    new_id=$(printf "%02d" $((serial_id + 1)))
+else
+   new_id="01"
+fi
+
+sed -i "s/$serial/$today$new_id/" "$file"
+
+/usr/sbin/rndc thaw $1 IN $view
+echo -n "$1: "
+/usr/sbin/rndc reload $1 IN $view
+
+shift
+if [[ "$1" = "--view" ]]; then
+    shift 2
+fi
+done
