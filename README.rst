@@ -42,9 +42,10 @@ Copy `config.py.dist` to `config.py` and edit to match you setup
 
 
 Add `/path/to/list_certs` to you `/etc/inetd.conf`:
-```
-ip_vpn:PORT    stream  tcp     nowait  root    /path/to/list_certs
-```
+
+.. code-block::
+
+  ip_vpn:PORT    stream  tcp     nowait  root    /path/to/list_cer
 
 
 Usage
@@ -73,12 +74,15 @@ alias files in  `/etc/letsencrypt/live/*` will be ignored.
 
 
 Service definitions are made in `/etc/ssl/private/service.ini` using this format:
-```
-[service_name]
-transport=(tcp|udp)
-ports=port1 port2 port3
-reload=some_command
-```
+
+
+.. code-block:: ini
+
+  [service_name]
+  transport=(tcp|udp)
+  ports=port1 port2 port3
+  reload=some_command
+
 The reload command is optional and is not used here, but it can be used by a certificate generation script
 to make `service_name` aware of a new certificate.
 
