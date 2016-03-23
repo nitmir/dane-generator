@@ -2,12 +2,14 @@ DANE Generator
 ==============
 
 This is a collection of scripts allowing to generate automatically
-DANE TLSA records and SSHFP record.
+DANE TLSA records and SSHFP record by collecting certificates and ssh
+public keys across multiples servers.
 
 Features
 --------
 
  * Collect informations from multiples servers
+ * Support the letsencrypt files tree
  * Generate dns zone files to be included with
    `$INCLUDE /etc/bind/generated/db.tlsa.example.com example.com.`
  * Only support plain certificate pinning for TLSA (not public key pinning, selector 0)
